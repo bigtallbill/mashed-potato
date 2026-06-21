@@ -153,11 +153,9 @@ func (s *Server) buildJobs() []jobView {
 	jobs := append([]config.Job(nil), s.cfg.Jobs...)
 	s.cfgMu.RUnlock()
 
-	installed, _ := s.sched.Installed()
-
 	var out []jobView
 	for _, j := range jobs {
-		jv := jobView{Name: j.Name, Schedule: j.Schedule, Paths: len(j.Paths), Scheduled: installed[j.Name]}
+		jv := jobView{Name: j.Name, Schedule: j.Schedule, Paths: len(j.Paths), Scheduled: s.sched.IsInstalled(j.Name)}
 		if last, err := s.store.RecentRuns(j.Name, 1); err == nil && len(last) == 1 {
 			jv.LastStatus = last[0].Status
 			jv.LastWhen = last[0].StartedAt.Local().Format("2006-01-02 15:04")

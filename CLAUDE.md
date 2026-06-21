@@ -131,6 +131,13 @@ When adding a feature, add a fake-restic/fake-systemctl smoke test in the same s
 - **Schedules are app-managed (imperative).** The schedule toggle / `enable`/`disable`
   write user units at runtime. The *serve* service itself is declarative (NixOS module),
   but per-job timers are not. Editing/saving a job **regenerates its timer**.
+- **Job names with spaces/special chars.** Unit names can't contain spaces, and
+  `ExecStart` splits args on whitespace. `scheduler.safeUnit()` slugs the job name into a
+  valid unit-name (deterministic, so `IsInstalled` just `stat`s the file — no reverse
+  parse), and `sdQuote()` double-quotes the job name / paths in `ExecStart`. The real job
+  name is still used for the config key, the `mashed-potato-job:<name>` tag, and the
+  `run <job>` arg. (The editor's name field also hints `[A-Za-z0-9._-]` but names aren't
+  hard-validated server-side, so the scheduler must stay robust to arbitrary names.)
 
 ## HTTP routes (server)
 `GET /{$}` dashboard · `GET /job` editor · `POST /api/run` · `POST /api/job[/delete|/addpath|/delpath]`

@@ -43,17 +43,53 @@ func New(binary, configPath, resticBin string) *Manager {
 	return &Manager{UnitDir: unitDir, Systemctl: sc, Binary: binary, ConfigPath: configPath, ResticBin: resticBin}
 }
 
-func (m *Manager) serviceName(job string) string { return unitPrefix + job + ".service" }
-func (m *Manager) timerName(job string) string   { return unitPrefix + job + ".timer" }
+func (m *Manager) serviceName(job string) string { return unitPrefix + safeUnit(job) + ".service" }
+func (m *Manager) timerName(job string) string   { return unitPrefix + safeUnit(job) + ".timer" }
+
+// safeUnit maps a job name to a valid systemd unit-name component (job names may
+// contain spaces/other chars that systemd rejects). Deterministic, so it doesn't
+// need reversing — installed-state checks stat the resulting file directly.
+func safeUnit(job string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range job {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_'
+		if ok {
+			b.WriteRune(r)
+			prevDash = false
+		} else if !prevDash {
+			b.WriteByte('-')
+			prevDash = true
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	if s == "" {
+		s = "job"
+	}
+	return s
+}
+
+// sdQuote double-quotes a value for an ExecStart argument if it contains
+// whitespace or quote characters (systemd splits unquoted args on whitespace).
+func sdQuote(s string) string {
+	if s == "" {
+		return `""`
+	}
+	if !strings.ContainsAny(s, " \t\"\\'") {
+		return s
+	}
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `"` + r.Replace(s) + `"`
+}
 
 // ServiceUnit returns the rendered .service file contents.
 func (m *Manager) ServiceUnit(job string) string {
-	exec := m.Binary + " run " + job
+	exec := m.Binary + " run " + sdQuote(job)
 	if m.ConfigPath != "" {
-		exec += " --config " + m.ConfigPath
+		exec += " --config " + sdQuote(m.ConfigPath)
 	}
 	if m.ResticBin != "" {
-		exec += " --restic " + m.ResticBin
+		exec += " --restic " + sdQuote(m.ResticBin)
 	}
 	return strings.Join([]string{
 		"[Unit]",
@@ -119,45 +155,36 @@ func (m *Manager) Disable(job string) error {
 	return firstErr
 }
 
-// Installed returns the set of job names that currently have a timer unit.
-func (m *Manager) Installed() (map[string]bool, error) {
-	set := map[string]bool{}
+// IsInstalled reports whether the job has a timer unit, by checking for its file
+// (the unit name is a deterministic function of the job name).
+func (m *Manager) IsInstalled(job string) bool {
+	_, err := os.Stat(filepath.Join(m.UnitDir, m.timerName(job)))
+	return err == nil
+}
+
+// timerFiles returns the mashed-potato timer unit filenames present on disk.
+func (m *Manager) timerFiles() []string {
 	entries, err := os.ReadDir(m.UnitDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return set, nil
-		}
-		return set, err
+		return nil
 	}
+	var names []string
 	for _, e := range entries {
 		n := e.Name()
 		if strings.HasPrefix(n, unitPrefix) && strings.HasSuffix(n, ".timer") {
-			set[strings.TrimSuffix(strings.TrimPrefix(n, unitPrefix), ".timer")] = true
+			names = append(names, n)
 		}
 	}
-	return set, nil
-}
-
-// IsInstalled reports whether the job has a timer unit (best-effort; false on error).
-func (m *Manager) IsInstalled(job string) bool {
-	set, _ := m.Installed()
-	return set[job]
+	sort.Strings(names)
+	return names
 }
 
 // ListTimers returns `systemctl --user list-timers` output for mashed-potato timers.
 func (m *Manager) ListTimers() (string, error) {
-	set, err := m.Installed()
-	if err != nil {
-		return "", err
-	}
-	if len(set) == 0 {
+	names := m.timerFiles()
+	if len(names) == 0 {
 		return "(no mashed-potato timers installed)\n", nil
 	}
-	names := make([]string, 0, len(set))
-	for job := range set {
-		names = append(names, m.timerName(job))
-	}
-	sort.Strings(names)
 	args := append([]string{"--user", "list-timers", "--all", "--no-pager"}, names...)
 	out, err := exec.Command(m.Systemctl, args...).CombinedOutput()
 	return string(out), err
