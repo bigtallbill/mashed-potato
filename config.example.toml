@@ -1,0 +1,36 @@
+# mashed-potato configuration
+# Copy to ~/.config/mashed-potato/config.toml and edit.
+
+[restic]
+# Repository on the NAS. "nas-backup" is the ssh alias created by
+# scripts/setup-nas-key.sh, so restic authenticates with the key automatically.
+repository = "sftp:nas-backup:/srv/dev-disk-by-uuid-5a47138d-2e34-446b-8c5f-c37849d737f8/backups/restic-repo"
+
+# A 0600 file containing the repo passphrase. Create it with, e.g.:
+#   install -m600 /dev/null ~/.config/mashed-potato/repo-password
+#   printf '%s' 'your-passphrase' > ~/.config/mashed-potato/repo-password
+# KEEP A COPY IN YOUR PASSWORD MANAGER — lose it and the repo is unrecoverable.
+password_file = "~/.config/mashed-potato/repo-password"
+
+# Optional args added to every restic call, e.g. ["--limit-upload", "20480"].
+# extra_args = []
+
+[[job]]
+name = "documents"
+paths = ["~/Documents"]
+excludes = ["**/node_modules", "**/.venv", "**/target", "**/.cache"]
+tags = ["documents"]
+schedule = "daily"        # systemd OnCalendar (e.g. daily, hourly, "*:0/30")
+# Retention (restic forget --prune); 0 = rule off. For sub-daily schedules use
+# keep_last / keep_hourly to retain intra-day snapshots.
+keep_last = 0
+keep_hourly = 0
+keep_daily = 7
+keep_weekly = 4
+keep_monthly = 6
+
+# [[job]]
+# name = "downloads"
+# paths = ["~/Downloads"]
+# tags = ["downloads"]
+# schedule = "*-*-* 03:00:00"

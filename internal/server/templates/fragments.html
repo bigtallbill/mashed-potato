@@ -1,0 +1,140 @@
+{{define "jobsTable"}}
+<table>
+  <thead>
+    <tr><th>Job</th><th>Dirs</th><th>Size</th><th>Schedule</th><th>Last run</th><th class="progress">Progress</th><th></th></tr>
+  </thead>
+  <tbody>
+    {{range .}}
+    <tr>
+      <td class="name"><a href="/job?name={{.Name}}">{{.Name}}</a></td>
+      <td><a class="dirlink" href="/job?name={{.Name}}" title="add / remove directories">{{.Paths}} dir{{if ne .Paths 1}}s{{end}}</a></td>
+      <td title="total file size at last backup">{{if .Size}}{{.Size}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td>
+        {{if .Schedule}}
+          <code>{{.Schedule}}</code>
+          {{if .Scheduled}}
+            <button class="toggle on" hx-post="/api/schedule" hx-vals='{"job":"{{.Name}}","enabled":"false"}' hx-swap="none" title="click to disable">on</button>
+          {{else}}
+            <button class="toggle off" hx-post="/api/schedule" hx-vals='{"job":"{{.Name}}","enabled":"true"}' hx-swap="none" title="click to enable">off</button>
+          {{end}}
+        {{else}}<span class="muted">—</span>{{end}}
+      </td>
+      <td>
+        {{if .LastWhen}}<span class="badge {{.LastStatus}}">{{.LastStatus}}</span> <span class="muted">{{.LastWhen}}</span>
+        {{else}}<span class="muted">never</span>{{end}}
+      </td>
+      <td class="progress">
+        {{if .Running}}
+          <progress max="100" value="{{printf "%.0f" .Percent}}"></progress>
+          <span class="pct">{{printf "%.0f" .Percent}}%</span>
+        {{else}}<span class="muted">—</span>{{end}}
+      </td>
+      <td class="actions">
+        <a class="btn" href="/job?name={{.Name}}">Edit</a>
+        <button class="run" hx-post="/api/run" hx-vals='{"job":"{{.Name}}"}' hx-swap="none" {{if .Running}}disabled{{end}}>
+          {{if .Running}}running…{{else}}Run now{{end}}
+        </button>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="7" class="muted">No jobs yet — add one to get started.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "historyTable"}}
+<table>
+  <thead>
+    <tr><th>Started</th><th>Job</th><th>Status</th><th>Snapshot</th><th>Added</th><th>Duration</th></tr>
+  </thead>
+  <tbody>
+    {{range .}}
+    <tr>
+      <td>{{.Started}}</td>
+      <td class="name">{{.Job}}</td>
+      <td><span class="badge {{.Status}}">{{.Status}}</span></td>
+      <td class="mono">{{if .Snapshot}}{{.Snapshot}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td>{{.Added}}</td>
+      <td>{{.Duration}}</td>
+    </tr>
+    {{if .Error}}
+    <tr class="errrow"><td colspan="6"><details><summary>error detail</summary><pre>{{.Error}}</pre></details></td></tr>
+    {{end}}
+    {{else}}
+    <tr><td colspan="6" class="muted">No runs recorded yet.</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "pathsList"}}
+<ul id="paths" class="paths">
+  {{range .Paths}}
+  <li>
+    <span class="mono">{{.}}</span>
+    <button class="mini" hx-post="/api/job/delpath" hx-vals='{"job":"{{$.Name}}","path":"{{.}}"}'
+            hx-target="#paths" hx-swap="outerHTML">remove</button>
+  </li>
+  {{else}}
+  <li class="muted">No directories yet — browse below to add one.</li>
+  {{end}}
+</ul>
+{{end}}
+
+{{define "snapshotsList"}}
+<div id="snapshots">
+  {{if .Err}}<p class="muted">couldn't list snapshots: {{.Err}}</p>{{end}}
+  {{if .Snaps}}
+  <table>
+    <thead><tr><th>Snapshot</th><th>When</th><th>Size</th><th>Files</th><th>Paths</th></tr></thead>
+    <tbody>
+      {{range .Snaps}}
+      <tr>
+        <td class="mono">{{.ID}}</td>
+        <td>{{.When}}</td>
+        <td>{{.Size}}</td>
+        <td>{{.Files}}</td>
+        <td class="muted">{{.Paths}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  <p class="muted">To browse/restore files, use the tray's <em>Browse snapshots</em> or <code>mashed-potatod mount</code>.</p>
+  {{else}}
+  {{if not .Err}}<p class="muted">No snapshots yet for this job.</p>{{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "browse"}}
+<div id="browser" class="browser">
+  <div class="browse-head">
+    <div class="crumbs mono">{{.Path}}</div>
+    {{if .ShowHidden}}
+    <button class="mini" hx-get="/api/browse" hx-vals='{"job":"{{.Job}}","path":"{{.Path}}","hidden":""}'
+            hx-target="#browser" hx-swap="outerHTML">hide hidden</button>
+    {{else}}
+    <button class="mini" hx-get="/api/browse" hx-vals='{"job":"{{.Job}}","path":"{{.Path}}","hidden":"1"}'
+            hx-target="#browser" hx-swap="outerHTML">show hidden</button>
+    {{end}}
+  </div>
+  {{if .Err}}<p class="muted">cannot read: {{.Err}}</p>{{end}}
+  <ul class="dirs">
+    {{if .Parent}}
+    <li><a href="#" hx-get="/api/browse" hx-vals='{"job":"{{.Job}}","path":"{{.Parent}}","hidden":"{{.HiddenParam}}"}'
+           hx-target="#browser" hx-swap="outerHTML">⬆ ..</a></li>
+    {{end}}
+    {{range .Dirs}}
+    <li>
+      <a href="#" hx-get="/api/browse" hx-vals='{"job":"{{$.Job}}","path":"{{.Path}}","hidden":"{{$.HiddenParam}}"}'
+         hx-target="#browser" hx-swap="outerHTML">📁 {{.Name}}</a>
+      <button class="mini" hx-post="/api/job/addpath" hx-vals='{"job":"{{$.Job}}","path":"{{.Path}}"}'
+              hx-target="#paths" hx-swap="outerHTML">add</button>
+    </li>
+    {{end}}
+  </ul>
+  <button class="add-here" hx-post="/api/job/addpath" hx-vals='{"job":"{{.Job}}","path":"{{.Path}}"}'
+          hx-target="#paths" hx-swap="outerHTML">+ add this directory</button>
+</div>
+{{end}}

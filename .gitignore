@@ -1,0 +1,7 @@
+/mashed-potatod
+/dist/
+/result
+/result-*
+*.db
+*.db-wal
+*.db-shm

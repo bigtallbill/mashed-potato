@@ -1,0 +1,97 @@
+{{define "job.html"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{if .IsNew}}New job{{else}}{{.Name}}{{end}} — mashed-potato</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+  <script>
+    // Append exclude pattern(s) to the textarea, one per line, skipping dupes.
+    function mpAddExclude() {
+      var ta = document.getElementById('excludes');
+      var have = ta.value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+      for (var i = 0; i < arguments.length; i++) {
+        if (have.indexOf(arguments[i]) === -1) have.push(arguments[i]);
+      }
+      ta.value = have.join('\n');
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>🥔 mashed-potato</h1>
+    <a class="back" href="/">← dashboard</a>
+  </header>
+
+  <main>
+    <h2>{{if .IsNew}}New job{{else}}Edit job: {{.Name}}{{end}}</h2>
+
+    <form class="jobform" hx-post="/api/job" hx-swap="none">
+      <label>Name
+        <input name="name" value="{{.Name}}" {{if not .IsNew}}readonly{{end}} required pattern="[A-Za-z0-9._-]+">
+      </label>
+      <label>Schedule <span class="muted">(systemd OnCalendar; leave blank for manual-only)</span>
+        <input id="schedule" name="schedule" value="{{.Schedule}}" placeholder="e.g. daily or *-*-* 02:00:00">
+      </label>
+      <div class="presets">
+        <span class="muted">quick set:</span>
+        <button type="button" class="chip" onclick="document.getElementById('schedule').value='hourly'">hourly</button>
+        <button type="button" class="chip" onclick="document.getElementById('schedule').value='*:0/30'">every 30 min</button>
+        <button type="button" class="chip" onclick="document.getElementById('schedule').value='daily'">daily</button>
+        <button type="button" class="chip" onclick="document.getElementById('schedule').value='*-*-* 10:00:00'">daily @ 10:00</button>
+      </div>
+      <label>Excludes <span class="muted">(one glob per line)</span>
+        <textarea id="excludes" name="excludes" rows="4">{{.Excludes}}</textarea>
+      </label>
+      <div class="presets">
+        <span class="muted">add common:</span>
+        <button type="button" class="chip" onclick="mpAddExclude('**/node_modules')">node_modules</button>
+        <button type="button" class="chip" onclick="mpAddExclude('**/.cache')">caches</button>
+        <button type="button" class="chip" onclick="mpAddExclude('**/.venv','**/venv','**/__pycache__')">python</button>
+        <button type="button" class="chip" onclick="mpAddExclude('**/_build','**/deps','**/.elixir_ls','**/erl_crash.dump')">elixir</button>
+        <button type="button" class="chip" onclick="mpAddExclude('**/target','**/dist','**/build')">build dirs</button>
+        <button type="button" class="chip" onclick="mpAddExclude('**/.git')">.git</button>
+        <button type="button" class="chip" onclick="mpAddExclude('**/.DS_Store','**/Thumbs.db')">OS junk</button>
+      </div>
+      <fieldset>
+        <legend>Retention <span class="muted">(snapshots to keep; 0 = rule off, all 0 = keep everything)</span></legend>
+        <label>last <input type="number" min="0" name="keep_last" value="{{.KeepLast}}"></label>
+        <label>hourly <input type="number" min="0" name="keep_hourly" value="{{.KeepHourly}}"></label>
+        <label>daily <input type="number" min="0" name="keep_daily" value="{{.KeepDaily}}"></label>
+        <label>weekly <input type="number" min="0" name="keep_weekly" value="{{.KeepWeekly}}"></label>
+        <label>monthly <input type="number" min="0" name="keep_monthly" value="{{.KeepMonthly}}"></label>
+      </fieldset>
+      <button class="btn primary" type="submit">Save</button>
+    </form>
+
+    {{if .IsNew}}
+    <p class="muted">Save the job first, then you can add directories to back up.</p>
+    {{else}}
+    <section>
+      <h3>Directories to back up</h3>
+      {{template "pathsList" .}}
+
+      <h4>Browse to add</h4>
+      <div hx-get="/api/browse" hx-vals='{"job":"{{.Name}}"}' hx-trigger="load" hx-target="this" hx-swap="outerHTML">
+        <span class="muted">loading…</span>
+      </div>
+    </section>
+
+    <section>
+      <h3>Snapshots</h3>
+      <div hx-get="/api/snapshots" hx-vals='{"job":"{{.Name}}"}' hx-trigger="load" hx-target="this" hx-swap="outerHTML">
+        <span class="muted">listing snapshots… (one repo query, may take a few seconds)</span>
+      </div>
+    </section>
+
+    <section class="danger">
+      <button class="btn danger" hx-post="/api/job/delete" hx-vals='{"job":"{{.Name}}"}' hx-swap="none"
+              hx-confirm="Delete job “{{.Name}}”? This removes it from config and disables its timer (snapshots on the NAS are untouched).">
+        Delete job
+      </button>
+    </section>
+    {{end}}
+  </main>
+</body>
+</html>{{end}}

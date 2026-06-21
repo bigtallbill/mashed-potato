@@ -1,0 +1,36 @@
+{{define "index.html"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mashed-potato</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/sse.js"></script>
+</head>
+<body hx-ext="sse" sse-connect="/api/events">
+  <header>
+    <h1>🥔 mashed-potato</h1>
+    <span class="sub">restic backups</span>
+  </header>
+
+  <main>
+    <section>
+      <div class="section-head">
+        <h2>Jobs</h2>
+        <a class="btn" href="/job">+ Add job</a>
+      </div>
+      <div id="jobs" sse-swap="jobs">
+        {{template "jobsTable" .Jobs}}
+      </div>
+    </section>
+
+    <section>
+      <h2>Recent runs</h2>
+      <div id="history" sse-swap="history">
+        {{template "historyTable" .History}}
+      </div>
+    </section>
+  </main>
+</body>
+</html>{{end}}
